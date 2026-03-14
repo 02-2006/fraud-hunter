@@ -1,0 +1,221 @@
+---
+# Namespace
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: fraudhunter
+
+---
+# ConfigMap
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: fraudhunter-config
+  namespace: fraudhunter
+data:
+  DEBUG: "false"
+  KAFKA_BOOTSTRAP_SERVERS: "kafka-service:9092"
+  KAFKA_TOPIC_TRANSACTIONS: "transactions.raw"
+  KAFKA_TOPIC_ALERTS: "fraud.alerts"
+  RISK_THRESHOLD_CRITICAL: "0.90"
+  RISK_THRESHOLD_HIGH: "0.70"
+  RISK_THRESHOLD_MEDIUM: "0.40"
+  AGENT_SCAN_INTERVAL_MS: "200"
+
+---
+# Secret (use Vault or SealedSecret in production)
+apiVersion: v1
+kind: Secret
+metadata:
+  name: fraudhunter-secrets
+  namespace: fraudhunter
+type: Opaque
+stringData:
+  DATABASE_URL: "postgresql+asyncpg://fraud:fraud@postgres-service:5432/fraudhunter"
+  REDIS_URL: "redis://redis-service:6379"
+  ANTHROPIC_API_KEY: "sk-ant-change-me"
+  SECRET_KEY: "change-me-in-production-32-chars"
+
+---
+# API Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fraudhunter-api
+  namespace: fraudhunter
+  labels:
+    app: fraudhunter-api
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: fraudhunter-api
+  template:
+    metadata:
+      labels:
+        app: fraudhunter-api
+    spec:
+      containers:
+        - name: api
+          image: fraudhunter/api:4.2.0
+          ports:
+            - containerPort: 8000
+          envFrom:
+            - configMapRef:
+                name: fraudhunter-config
+            - secretRef:
+                name: fraudhunter-secrets
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "512Mi"
+            limits:
+              cpu: "2000m"
+              memory: "2Gi"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+
+---
+# API Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: fraudhunter-api-service
+  namespace: fraudhunter
+spec:
+  selector:
+    app: fraudhunter-api
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 8000
+  type: ClusterIP
+
+---
+# Frontend Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fraudhunter-frontend
+  namespace: fraudhunter
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: fraudhunter-frontend
+  template:
+    metadata:
+      labels:
+        app: fraudhunter-frontend
+    spec:
+      containers:
+        - name: frontend
+          image: fraudhunter/frontend:4.2.0
+          ports:
+            - containerPort: 80
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "256Mi"
+
+---
+# Frontend Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: fraudhunter-frontend-service
+  namespace: fraudhunter
+spec:
+  selector:
+    app: fraudhunter-frontend
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 80
+  type: ClusterIP
+
+---
+# Ingress
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: fraudhunter-ingress
+  namespace: fraudhunter
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-body-size: "10m"
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - fraudhunter.yourdomain.com
+      secretName: fraudhunter-tls
+  rules:
+    - host: fraudhunter.yourdomain.com
+      http:
+        paths:
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: fraudhunter-api-service
+                port:
+                  number: 80
+          - path: /ws
+            pathType: Prefix
+            backend:
+              service:
+                name: fraudhunter-api-service
+                port:
+                  number: 80
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: fraudhunter-frontend-service
+                port:
+                  number: 80
+
+---
+# HorizontalPodAutoscaler for API
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: fraudhunter-api-hpa
+  namespace: fraudhunter
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: fraudhunter-api
+  minReplicas: 3
+  maxReplicas: 20
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 80

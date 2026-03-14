@@ -1,0 +1,56 @@
+# FraudHunter AI — Backend Dependencies
+
+# Framework
+fastapi==0.115.0
+uvicorn[standard]==0.30.6
+pydantic==2.8.2
+pydantic-settings==2.4.0
+
+# Database
+sqlalchemy[asyncio]==2.0.36
+asyncpg==0.29.0
+alembic==1.13.2
+
+# Cache
+redis[asyncio]==5.0.8
+aioredis==2.0.1
+
+# Kafka streaming
+aiokafka==0.11.0
+
+# ML / Data
+scikit-learn==1.5.2
+xgboost==2.1.1
+numpy==2.1.1
+pandas==2.2.3
+joblib==1.4.2
+scipy==1.14.1
+
+# AI
+anthropic==0.34.2
+
+# Geo / IP
+maxminddb==2.6.1
+geoip2==4.8.0
+
+# Observability
+prometheus-fastapi-instrumentator==7.0.0
+opentelemetry-api==1.27.0
+opentelemetry-sdk==1.27.0
+structlog==24.4.0
+
+# Security
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+python-multipart==0.0.9
+
+# Testing
+pytest==8.3.3
+pytest-asyncio==0.24.0
+httpx==0.27.2
+factory-boy==3.3.1
+
+# Utilities
+python-dotenv==1.0.1
+httpx==0.27.2
+tenacity==9.0.0
