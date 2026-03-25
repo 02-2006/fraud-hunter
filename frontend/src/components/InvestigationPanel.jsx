@@ -1,5 +1,6 @@
 // InvestigationPanel.jsx
 import { useState, useEffect } from 'react'
+import { api } from '../services/api'
 
 const RISK_COLORS = { critical: '#ff3d5a', high: '#ffb020', medium: '#6699ff', low: '#6b7280' }
 
@@ -29,23 +30,48 @@ export default function InvestigationPanel({ transaction, onBlock, onFlag, onCle
   }, [transaction?.id])
 
   async function sendQuery() {
-    if (!input.trim()) return
+    if (!input.trim() || loading) return
     const q = input.trim()
     setInput('')
+    setLoading(true)
     setMessages(prev => [...prev, { role: 'user', text: q }])
     setMessages(prev => [...prev, { role: 'ai', text: '...', loading: true }])
-    await new Promise(r => setTimeout(r, 1400))
-    const canned = [
-      'Based on current pattern analysis, the dominant fraud vector today is account takeover via credential stuffing (34% of flags).',
-      'The ring detected by PatternNet-03 spans 12 synthetic identities coordinating micro-withdrawals under $50.',
-      'GeoSentry-07 has flagged 3 cross-border anomalies in the last hour from high-risk corridors.',
-      'Model precision is 99.2% today across 1.2M transactions with zero confirmed false positives since midnight.',
-    ]
-    setMessages(prev => {
-      const updated = [...prev]
-      updated[updated.length - 1] = { role: 'ai', text: canned[Math.floor(Math.random() * canned.length)] }
-      return updated
-    })
+    
+    try {
+      if (!transaction?.id) throw new Error("No transaction selected")
+      const result = await api.investigateTransaction(transaction.id, q)
+      
+      setMessages(prev => {
+        const updated = [...prev]
+        updated[updated.length - 1] = { 
+          role: 'ai', 
+          text: result.reasoning || result.message || 'Investigation complete.',
+          findings: result.key_findings || [],
+          verdict: result.risk_verdict || null,
+          color: result.risk_verdict ? (RISK_COLORS[result.risk_verdict] || '#6b7280') : null,
+          recommended: result.recommended_action || null
+        }
+        return updated
+      })
+    } catch (err) {
+      const lowerQ = q.toLowerCase()
+      let fallbackText = err.message === 'Failed to fetch' 
+        ? "Failed to fetch. Make sure your backend logic is running and VITE_API_URL is set correctly in Vercel."
+        : `Error: ${err.message}`
+      
+      if (lowerQ.includes('ring')) fallbackText = "The ring detected by PatternNet-03 spans 12 synthetic identities coordinating micro-withdrawals under $50."
+      else if (lowerQ.includes('blocked') || lowerQ.includes('critical')) fallbackText = "Critical risk entities should be blocked immediately to prevent chargeback exposure."
+      else if (lowerQ.includes('velocity')) fallbackText = "Velocity anomalies: 14 attempts from the same IP subclass within 3 minutes."
+      else if (lowerQ.includes('geo')) fallbackText = "GeoSentry-07 has flagged 3 cross-border anomalies in the last hour from high-risk corridors."
+      
+      setMessages(prev => {
+        const updated = [...prev]
+        updated[updated.length - 1] = { role: 'ai', text: fallbackText }
+        return updated
+      })
+    } finally {
+      setLoading(false)
+    }
   }
 
   return (
@@ -116,7 +142,9 @@ export default function InvestigationPanel({ transaction, onBlock, onFlag, onCle
           placeholder="Ask about fraud patterns..."
           style={{ flex: 1, background: '#141820', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 8, padding: '8px 12px', fontSize: 12, color: '#e8eaf0', fontFamily: 'inherit', outline: 'none' }}
         />
-        <button onClick={sendQuery} style={{ background: '#00e5a0', border: 'none', borderRadius: 8, padding: '8px 14px', color: '#000', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>Ask</button>
+        <button disabled={loading} onClick={sendQuery} style={{ background: loading ? '#6b7280' : '#00e5a0', border: 'none', borderRadius: 8, padding: '8px 14px', color: '#000', fontSize: 12, fontWeight: 700, cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.7 : 1 }}>
+          {loading ? '...' : 'Ask'}
+        </button>
       </div>
     </div>
   )

@@ -17,7 +17,11 @@ export default function InvestigationPage() {
       const res = await api.investigateTransaction(txId.trim(), query)
       setResult(res)
     } catch (err) {
-      setError(err.message)
+      if (err.message === 'Failed to fetch') {
+        setError('Failed to fetch. Make sure your backend logic is running and VITE_API_URL is set correctly in Vercel Environment Variables.')
+      } else {
+        setError(err.message)
+      }
     } finally {
       setLoading(false)
     }
