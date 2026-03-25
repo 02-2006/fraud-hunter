@@ -166,12 +166,12 @@ class TimeSeriesPoint(BaseModel):
 # ─── AI Investigation ─────────────────────────────────────────────────────────
 
 class InvestigationRequest(BaseModel):
-    transaction_id: UUID
+    transaction_id: str
     query: Optional[str] = "Perform full fraud analysis"
 
 
 class InvestigationResponse(BaseModel):
-    transaction_id: UUID
+    transaction_id: str
     risk_verdict: RiskLevel
     confidence: float
     reasoning: str

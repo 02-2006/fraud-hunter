@@ -12,7 +12,13 @@ async function request(path, options = {}) {
   })
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: res.statusText }))
-    throw new Error(err.detail || `HTTP ${res.status}`)
+    let message = err.detail || `HTTP ${res.status}`
+    if (Array.isArray(message)) {
+      message = message.map(e => `${e.loc?.slice(-1)[0]}: ${e.msg}`).join(', ') // Format FastAPI validation errors
+    } else if (typeof message === 'object') {
+      message = JSON.stringify(message)
+    }
+    throw new Error(message)
   }
   return res.json()
 }
